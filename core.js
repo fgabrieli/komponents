@@ -6,49 +6,41 @@
  */
 
 window.komp = {
-    // component id, this is the tag name
-    id : '',
-
     // component controller
     controller : {},
 
+    compiler : {},
+    
     init : function(component) {
-        this.id = component;
+        this.compiler = new komp.Compiler();
 
-        this.$componentEl = $(component);
-
-        var controllerExpr = this.$componentEl.attr('controller');
+        var $componentEl = $(component);
+        var controllerExpr = $componentEl.attr('controller');
         var controller = eval(controllerExpr);
 
-        this.controller = controller;
-
-        this.setupController();
-
-        var t = this;
-        $.when(this.setupTemplate()).then(function() {
-            var compiler = new komp.Compiler();
-            var rootScope = new komp.Scope(t.controller);
-            compiler.compile(t.$componentEl, rootScope);
-        })
-    },
-
-    setupController : function() {
-        var controller = this.controller;
-
-        controller.getElement = function() {
-            return $component;
-        }
+        controller.component = component;
+        controller.$componentEl = $componentEl;
 
         controller.init();
+
+        var t = this;
+        $.when(this.setupTemplate(controller)).then(function(template) {
+            controller.template = template;
+            
+            controller.compile = function() {
+                var rootScope = new komp.Scope(controller);
+                t.compiler.compile($componentEl, rootScope);
+            }
+            
+            controller.compile();
+        })
     },
 
     /**
      * @returns promise
      */
-    setupTemplate : function() {
+    setupTemplate : function(controller) {
         var d = $.Deferred();
-
-        var controller = this.controller;
 
         if (controller.templateUrl) {
             $.when($.get(controller.templateUrl)).then(function(tpl) {
@@ -57,15 +49,13 @@ window.komp = {
             });
         } else {
             var $tpl = $(controller.template);
-            $tpl.attr('component', this.id);
-
             setTemplate($tpl);
         }
 
         var t = this;
 
         function setTemplate($tpl) {
-            t.$componentEl.html($tpl);
+            controller.$componentEl.append($tpl);
 
             d.resolve();
         }
@@ -117,37 +107,20 @@ komp.Compiler = function() {
 
         if (hasIf($el)) {
             var condition = $el.attr('kIf');
+
+//            var parts = condition.match(/(.*?)\s+?([=|<|>|!|>=|<=|]+)\s+?(.*)/);
+//            if (parts == null) {
+//            } else {
+//                var conditionType = parts[2];
+//
+//                evalProposition(parts[1]);
+//            
+//                evalProposition(parts[3]);
+//                
+//                var condition = 
+//            }
             
-            var parts = condition.match(/(.*?)\s+?([=|<|>|!|>=|<=|]+)\s+?(.*)/);
-            if (parts == null) {
-                evalProposition(condition);
-            } else {
-                var conditionType = parts[2];
-                
-                evalProposition(parts[1]);
-                
-                evalProposition(parts[3]);
-            }
-
-            function evalProposition(prop) {
-                if (!isLiteral(prop)) {
-                    condition = condition.replace(prop, 'this.' + prop);
-                }
-                
-                if (isFunction(prop)) {
-                    var params = prop.match(/(.*)\((.*)+\)$/)[2].split(',');
-                    for (var i = 0; i < params.length; i++) {
-                        var param = params[i];
-                        condition = condition.replace(param, 'this.' + param);
-                    }
-                }
-            }
-
-            function isFunction(prop) {
-                return /(.*)\((.*)+\)$/.test(prop);
-            }
-
-            var result = jsEval(condition, scope);
+            var result = jsEval(evalCondition(condition), scope);
 
             console.log(condition);
 
@@ -155,6 +128,33 @@ komp.Compiler = function() {
                 $el.css('display', 'none');
             }
         }
+    }
+
+    function evalCondition(condition) {
+        var parts = condition.match(/(.*?)\s+?([=|<|>|!|>=|<=|]+)\s+?(.*)/);
+        if (parts != null) {
+            return evalCondition(parts[1]) + parts[2] + evalCondition(parts[3]);
+        }
+
+        if (isFunction(condition)) {
+            var parts = condition.match(/(.*)\((.*)+\)$/);
+            var funcName = parts[1];
+            var params = parts[2].split(',');
+            for (var i = 0; i < params.length; i++) {
+                var param = params[i];
+                condition = condition.replace(param, 'this.' + param.trim());
+            }
+        } 
+        
+        if (!isLiteral(condition)) {
+            condition = 'this.' + condition;
+        }
+
+        return condition;
+    }
+
+    function isFunction(prop) {
+        return /(.*)\((.*)+\)$/.test(prop);
     }
 
     function isLiteral(expr) {
@@ -233,9 +233,9 @@ komp.Compiler = function() {
             $newEl.children().each(function(i, childEl) {
                 t.eval($(childEl), newScope);
             })
-            
+
             console.log(elToHtml($newEl));
-            
+
             $newEl.insertBefore($el);
 
         }
