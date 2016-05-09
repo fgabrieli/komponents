@@ -1,5 +1,14 @@
 <div>this is a test</div>
 
 <ul>
-  <li kFor="number in numbers">{number}</li>
+<!--   <li style="list-style: none" kFor="number in numbers" kIf="number == 3">I am {number}</li> -->
+
+  <li style="list-style: none" kFor="number in numbers">
+    <div kIf="isEven(number)" id="number-{number}">
+    I am {number}
+    </div>
+  </li>
+
+  
+  <div kIf="show">I am showing :)</div>
 </ul>
